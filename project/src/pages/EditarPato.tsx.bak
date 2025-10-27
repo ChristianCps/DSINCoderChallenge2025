@@ -1,0 +1,637 @@
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Save, Plus } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+import toast from 'react-hot-toast';
+import { converterAlturaParaCM, converterPesoParaG, converterPrecisaoParaM } from '../utils/conversions';
+import { countries } from '../data/countries';
+import { TipoPoder, RaridadePoder, DroneFabricante, DroneMarca } from '../types';
+import ModalFabricante from '../components/ModalFabricante';
+import ModalMarca from '../components/ModalMarca';
+
+interface NovoRegistroPatoProps {
+  onBack: () => void;
+}
+
+export default function NovoRegistroPato({ onBack }: NovoRegistroPatoProps) {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const [fabricantes, setFabricantes] = useState<DroneFabricante[]>([]);
+  const [marcas, setMarcas] = useState<DroneMarca[]>([]);
+  const [selectedFabricanteId, setSelectedFabricanteId] = useState('');
+  const [selectedMarcaId, setSelectedMarcaId] = useState('');
+  const [numeroSerie, setNumeroSerie] = useState('');
+  const [dronePaisOrigem, setDronePaisOrigem] = useState('Brasil');
+
+  const [modalFabricanteOpen, setModalFabricanteOpen] = useState(false);
+  const [modalMarcaOpen, setModalMarcaOpen] = useState(false);
+
+  const [alturaValor, setAlturaValor] = useState('');
+  const [alturaUnidade, setAlturaUnidade] = useState('cm');
+  const [pesoValor, setPesoValor] = useState('');
+  const [pesoUnidade, setPesoUnidade] = useState('g');
+
+  const [cidade, setCidade] = useState('');
+  const [pais, setPais] = useState('Brasil');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [pontoDeReferencia, setPontoDeReferencia] = useState('');
+  const [dificuldadeTerreno, setDificuldadeTerreno] = useState('');
+  const [precisaoValor, setPrecisaoValor] = useState('');
+  const [precisaoUnidade, setPrecisaoUnidade] = useState('m');
+
+  const [statusHibernacao, setStatusHibernacao] = useState<'Desperto' | 'Em Transe' | 'Hibernação Profunda'>('Hibernação Profunda');
+  const [batimentosCardiacos, setBatimentosCardiacos] = useState('');
+  const [quantidadeMutacoes, setQuantidadeMutacoes] = useState('0');
+
+  const [superpoderNome, setSuperpoderNome] = useState('');
+  const [superpoderDescricao, setSuperpoderDescricao] = useState('');
+  const [superpoderTipo, setSuperpoderTipo] = useState<TipoPoder>('Bélico');
+  const [superpoderTipoCustom, setSuperpoderTipoCustom] = useState('');
+  const [superpoderRaridade, setSuperpoderRaridade] = useState<RaridadePoder>('Comum');
+  const [superpoderNotas, setSuperpoderNotas] = useState('');
+
+  useEffect(() => {
+    fetchFabricantes();
+    fetchMarcas();
+  }, []);
+
+  useEffect(() => {
+    if (selectedMarcaId) {
+      const marca = marcas.find(m => m.id === selectedMarcaId);
+      if (marca) {
+        setPrecisaoValor(marca.precisao_valor.toString());
+        setPrecisaoUnidade(marca.precisao_unidade);
+        if (marca.unidade_altura_padrao) setAlturaUnidade(marca.unidade_altura_padrao);
+        if (marca.unidade_peso_padrao) setPesoUnidade(marca.unidade_peso_padrao);
+
+        if (marca.fabricante_id) {
+          setSelectedFabricanteId(marca.fabricante_id);
+        }
+      }
+    }
+  }, [selectedMarcaId, marcas]);
+
+  async function fetchFabricantes() {
+    const { data, error } = await supabase
+      .from('drone_fabricantes')
+      .select('*')
+      .order('nome');
+
+    if (data) setFabricantes(data as DroneFabricante[]);
+    if (error) console.error('Erro ao buscar fabricantes:', error);
+  }
+
+  async function fetchMarcas() {
+    const { data, error } = await supabase
+      .from('drone_marcas')
+      .select('*')
+      .order('nome');
+
+    if (data) setMarcas(data as DroneMarca[]);
+    if (error) console.error('Erro ao buscar marcas:', error);
+  }
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const altura_cm = converterAlturaParaCM(parseFloat(alturaValor), alturaUnidade);
+      const peso_g = converterPesoParaG(parseFloat(pesoValor), pesoUnidade);
+      const precisao_m = converterPrecisaoParaM(parseFloat(precisaoValor), precisaoUnidade);
+
+      if (precisao_m < 0.04 || precisao_m > 30) {
+        toast.error('A precisão GPS deve estar entre 0.04m e 30m (convertido)');
+        setIsLoading(false);
+        return;
+      }
+
+      const dadosDoPato = {
+        drone_marca_id: selectedMarcaId || null,
+        drone_numero_serie: numeroSerie,
+        drone_pais_origem: dronePaisOrigem,
+        altura_cm,
+        peso_g,
+        precisao_m,
+        dados_originais: {
+          altura: { valor: parseFloat(alturaValor), unidade: alturaUnidade },
+          peso: { valor: parseFloat(pesoValor), unidade: pesoUnidade },
+          precisao: { valor: parseFloat(precisaoValor), unidade: precisaoUnidade }
+        },
+        localizacao: {
+          cidade,
+          pais,
+          latitude: parseFloat(latitude),
+          longitude: parseFloat(longitude),
+          pontoDeReferencia: pontoDeReferencia || undefined,
+          dificuldade_terreno: dificuldadeTerreno || undefined
+        },
+        status_hibernacao: statusHibernacao,
+        batimentos_cardiacos_bpm: statusHibernacao !== 'Desperto' && batimentosCardiacos ? parseInt(batimentosCardiacos) : null,
+        quantidade_mutacoes: parseInt(quantidadeMutacoes),
+        superpoder: statusHibernacao === 'Desperto' && superpoderNome ? {
+          nome: superpoderNome,
+          descricao: superpoderDescricao,
+          tipo: superpoderTipo,
+          tipo_custom: superpoderTipo === 'Outro' ? superpoderTipoCustom : null,
+          raridade: superpoderRaridade,
+          notas: superpoderNotas
+        } : null,
+        capturado: false
+      };
+
+      const { error } = await supabase.from('patos_primordiais').insert([dadosDoPato]);
+
+      if (error) {
+        console.error('Erro ao salvar Pato:', error);
+        if (error.code === '23505' && error.message.includes('drone_numero_serie')) {
+          toast.error('Este número de série já está cadastrado!');
+        } else {
+          toast.error('Falha ao catalogar: ' + error.message);
+        }
+      } else {
+        toast.success('Pato Primordial catalogado com sucesso!');
+        onBack();
+      }
+    } catch (err) {
+      console.error('Erro ao processar dados:', err);
+      toast.error('Erro ao processar dados do formulário');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const marcasFiltradas = selectedFabricanteId
+    ? marcas.filter(m => m.fabricante_id === selectedFabricanteId)
+    : marcas;
+
+  return (
+    <div className="p-8">
+      <div className="flex items-center gap-4 mb-8">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors"
+        >
+          <ArrowLeft size={20} />
+          <span>Voltar ao Catálogo</span>
+        </button>
+      </div>
+
+      <h1 className="text-3xl font-bold text-cyan-400 mb-8">Novo Registro de Pato Primordial</h1>
+
+      <form onSubmit={handleSubmit} className="space-y-8">
+        <div className="bg-gray-900 border border-cyan-500/30 rounded-lg p-6">
+          <h2 className="text-xl font-bold text-cyan-400 mb-4">Informações do Drone</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Fabricante *
+              </label>
+              <div className="flex gap-2">
+                <select
+                  required
+                  value={selectedFabricanteId}
+                  onChange={(e) => setSelectedFabricanteId(e.target.value)}
+                  className="flex-1 bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="">Selecione um fabricante</option>
+                  {fabricantes.map((fab) => (
+                    <option key={fab.id} value={fab.id}>
+                      {fab.nome}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setModalFabricanteOpen(true)}
+                  className="bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-2 rounded-lg transition-all"
+                  title="Adicionar Fabricante"
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Marca/Modelo *
+              </label>
+              <div className="flex gap-2">
+                <select
+                  required
+                  value={selectedMarcaId}
+                  onChange={(e) => setSelectedMarcaId(e.target.value)}
+                  className="flex-1 bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="">Selecione uma marca</option>
+                  {marcasFiltradas.map((marca) => (
+                    <option key={marca.id} value={marca.id}>
+                      {marca.nome}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setModalMarcaOpen(true)}
+                  disabled={fabricantes.length === 0}
+                  className="bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Adicionar Marca"
+                >
+                  <Plus size={20} />
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Número de Série *
+              </label>
+              <input
+                type="text"
+                required
+                value={numeroSerie}
+                onChange={(e) => setNumeroSerie(e.target.value)}
+                className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                País de Origem do Drone *
+              </label>
+              <select
+                required
+                value={dronePaisOrigem}
+                onChange={(e) => setDronePaisOrigem(e.target.value)}
+                className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+              >
+                {countries.map((country) => (
+                  <option key={country.value} value={country.value}>
+                    {country.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gray-900 border border-cyan-500/30 rounded-lg p-6">
+          <h2 className="text-xl font-bold text-cyan-400 mb-4">Dados Biométricos</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Altura *
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={alturaValor}
+                  onChange={(e) => setAlturaValor(e.target.value)}
+                  className="flex-1 bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                />
+                <select
+                  value={alturaUnidade}
+                  onChange={(e) => setAlturaUnidade(e.target.value)}
+                  className="bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="cm">cm</option>
+                  <option value="m">m</option>
+                  <option value="mm">mm</option>
+                  <option value="in">in</option>
+                  <option value="ft">ft</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Peso *
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={pesoValor}
+                  onChange={(e) => setPesoValor(e.target.value)}
+                  className="flex-1 bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                />
+                <select
+                  value={pesoUnidade}
+                  onChange={(e) => setPesoUnidade(e.target.value)}
+                  className="bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="g">g</option>
+                  <option value="kg">kg</option>
+                  <option value="mg">mg</option>
+                  <option value="lb">lb</option>
+                  <option value="oz">oz</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gray-900 border border-cyan-500/30 rounded-lg p-6">
+          <h2 className="text-xl font-bold text-cyan-400 mb-4">Localização</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Cidade *
+              </label>
+              <input
+                type="text"
+                required
+                value={cidade}
+                onChange={(e) => setCidade(e.target.value)}
+                className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                País *
+              </label>
+              <select
+                required
+                value={pais}
+                onChange={(e) => setPais(e.target.value)}
+                className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+              >
+                {countries.map((country) => (
+                  <option key={country.value} value={country.value}>
+                    {country.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Latitude *
+              </label>
+              <input
+                type="number"
+                step="0.000001"
+                required
+                value={latitude}
+                onChange={(e) => setLatitude(e.target.value)}
+                className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Longitude *
+              </label>
+              <input
+                type="number"
+                step="0.000001"
+                required
+                value={longitude}
+                onChange={(e) => setLongitude(e.target.value)}
+                className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Ponto de Referência
+              </label>
+              <input
+                type="text"
+                value={pontoDeReferencia}
+                onChange={(e) => setPontoDeReferencia(e.target.value)}
+                className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Precisão GPS *
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={precisaoValor}
+                  onChange={(e) => setPrecisaoValor(e.target.value)}
+                  className="flex-1 bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                />
+                <select
+                  value={precisaoUnidade}
+                  onChange={(e) => setPrecisaoUnidade(e.target.value)}
+                  className="bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="m">m</option>
+                  <option value="km">km</option>
+                  <option value="cm">cm</option>
+                  <option value="mm">mm</option>
+                  <option value="ft">ft</option>
+                  <option value="mi">mi</option>
+                </select>
+              </div>
+            </div>
+            {pontoDeReferencia && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Dificuldade do Terreno
+                </label>
+                <select
+                  value={dificuldadeTerreno}
+                  onChange={(e) => setDificuldadeTerreno(e.target.value)}
+                  className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="">Selecione</option>
+                  <option value="Trivial">Trivial</option>
+                  <option value="Baixa">Baixa</option>
+                  <option value="Moderada">Moderada</option>
+                  <option value="Alta">Alta</option>
+                  <option value="Extrema">Extrema</option>
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-gray-900 border border-cyan-500/30 rounded-lg p-6">
+          <h2 className="text-xl font-bold text-cyan-400 mb-4">Status e Habilidades</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Status de Hibernação *
+              </label>
+              <select
+                value={statusHibernacao}
+                onChange={(e) => setStatusHibernacao(e.target.value as any)}
+                className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+              >
+                <option value="Hibernação Profunda">Hibernação Profunda</option>
+                <option value="Em Transe">Em Transe</option>
+                <option value="Desperto">Desperto</option>
+              </select>
+            </div>
+
+            {statusHibernacao !== 'Desperto' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Batimentos Cardíacos (BPM)
+                </label>
+                <input
+                  type="number"
+                  value={batimentosCardiacos}
+                  onChange={(e) => setBatimentosCardiacos(e.target.value)}
+                  className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Quantidade de Mutações *
+              </label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={quantidadeMutacoes}
+                onChange={(e) => setQuantidadeMutacoes(e.target.value)}
+                className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+
+            {statusHibernacao === 'Desperto' && (
+              <div className="border-t border-cyan-500/30 pt-4 mt-4">
+                <h3 className="text-lg font-bold text-cyan-400 mb-4">Análise de Super-poder</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Nome do Poder
+                    </label>
+                    <input
+                      type="text"
+                      value={superpoderNome}
+                      onChange={(e) => setSuperpoderNome(e.target.value)}
+                      placeholder="Ex: Tempestade Elétrica"
+                      className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Descrição
+                    </label>
+                    <textarea
+                      value={superpoderDescricao}
+                      onChange={(e) => setSuperpoderDescricao(e.target.value)}
+                      rows={3}
+                      placeholder="Ex: Gera descargas elétricas em área"
+                      className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Tipo do Poder
+                    </label>
+                    <select
+                      value={superpoderTipo}
+                      onChange={(e) => setSuperpoderTipo(e.target.value as TipoPoder)}
+                      className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                    >
+                      <option value="Bélico">Bélico (Combate direto)</option>
+                      <option value="Defensivo">Defensivo (Escudos, barreiras)</option>
+                      <option value="Elemental">Elemental (Fogo, água, etc.)</option>
+                      <option value="Tecnológico">Tecnológico (Energia, eletrônicos)</option>
+                      <option value="Psíquico">Psíquico (Mente, ilusão)</option>
+                      <option value="Biológico">Biológico (Regeneração, veneno)</option>
+                      <option value="Espacial">Espacial (Tempo, gravidade)</option>
+                      <option value="Místico">Místico (Magia, espiritual)</option>
+                      <option value="Sônico">Sônico (Som, vibrações)</option>
+                      <option value="Caótico">Caótico (Instável, imprevisível)</option>
+                      <option value="Outro">Outro (Especificar)</option>
+                    </select>
+                  </div>
+                  {superpoderTipo === 'Outro' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-400 mb-2">
+                        Especifique o Tipo:
+                      </label>
+                      <input
+                        type="text"
+                        value={superpoderTipoCustom}
+                        onChange={(e) => setSuperpoderTipoCustom(e.target.value)}
+                        placeholder="Ex: Gravitacional"
+                        className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Raridade
+                    </label>
+                    <select
+                      value={superpoderRaridade}
+                      onChange={(e) => setSuperpoderRaridade(e.target.value as RaridadePoder)}
+                      className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                    >
+                      <option value="Comum">Comum</option>
+                      <option value="Incomum">Incomum</option>
+                      <option value="Raro">Raro</option>
+                      <option value="Épico">Épico</option>
+                      <option value="Lendário">Lendário</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Notas Adicionais de Classificação
+                    </label>
+                    <input
+                      type="text"
+                      value={superpoderNotas}
+                      onChange={(e) => setSuperpoderNotas(e.target.value)}
+                      placeholder="Ex: alto risco de curto-circuito, instável, etc."
+                      className="w-full bg-gray-950 border border-cyan-500/30 rounded px-4 py-2 text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-4">
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={isLoading}
+            className="px-6 py-3 border border-cyan-500/30 text-cyan-400 rounded-lg hover:bg-cyan-500/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-600 text-white px-6 py-3 rounded-lg transition-all duration-200 shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save size={20} />
+            <span className="font-medium">{isLoading ? 'Salvando...' : 'Catalogar Pato'}</span>
+          </button>
+        </div>
+      </form>
+
+      <ModalFabricante
+        isOpen={modalFabricanteOpen}
+        onClose={() => setModalFabricanteOpen(false)}
+        onSuccess={(fabricante) => {
+          setFabricantes([...fabricantes, fabricante]);
+          setSelectedFabricanteId(fabricante.id || '');
+          fetchFabricantes();
+        }}
+      />
+
+      <ModalMarca
+        isOpen={modalMarcaOpen}
+        onClose={() => setModalMarcaOpen(false)}
+        onSuccess={(marca) => {
+          setMarcas([...marcas, marca]);
+          setSelectedMarcaId(marca.id || '');
+          fetchMarcas();
+        }}
+        fabricantes={fabricantes}
+      />
+    </div>
+  );
+}
