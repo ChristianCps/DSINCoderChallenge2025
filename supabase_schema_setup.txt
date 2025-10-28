@@ -1,0 +1,78 @@
+
+-- SCHEMA SETUP FOR DSIN - Pato Primordial
+
+create table public.drone_fabricantes (
+  id uuid not null default gen_random_uuid (),
+  nome text not null,
+  unidade_medida_padrao text null,
+  pais_origem text not null default ''::text,
+  created_at timestamp with time zone null default now(),
+  constraint drone_fabricantes_pkey primary key (id),
+  constraint drone_fabricantes_nome_key unique (nome)
+);
+
+create table public.drone_marcas (
+  id uuid not null default gen_random_uuid (),
+  nome text not null,
+  fabricante_id uuid null,
+  precisao_valor numeric not null,
+  precisao_unidade text not null,
+  created_at timestamp with time zone null default now(),
+  constraint drone_marcas_pkey primary key (id),
+  constraint drone_marcas_nome_fabricante_id_key unique (nome, fabricante_id),
+  constraint drone_marcas_fabricante_id_fkey foreign KEY (fabricante_id) references drone_fabricantes (id) on delete CASCADE
+);
+
+create table public.bases_operacionais (
+  id uuid not null default gen_random_uuid (),
+  created_at timestamp with time zone null default now(),
+  nome text not null,
+  cidade text null,
+  pais text not null,
+  latitude numeric not null,
+  longitude numeric not null,
+  is_sede boolean not null default false,
+  constraint bases_operacionais_pkey primary key (id)
+);
+
+create table public.patos_primordiais (
+  id uuid not null default gen_random_uuid (),
+  created_at timestamp with time zone null default now(),
+  altura_cm numeric not null,
+  peso_g numeric not null,
+  localizacao jsonb not null,
+  precisao_m numeric not null,
+  dados_originais jsonb null,
+  status_hibernacao text not null,
+  batimentos_cardiacos_bpm integer null,
+  quantidade_mutacoes integer not null default 0,
+  superpoder jsonb null,
+  capturado boolean null default false,
+  drone_marca_id uuid null,
+  drone_numero_serie text null,
+  dificuldade_terreno text null,
+  constraint patos_primordiais_pkey primary key (id),
+  constraint unique_drone_serial unique (drone_numero_serie),
+  constraint patos_primordiais_drone_marca_id_fkey foreign KEY (drone_marca_id) references drone_marcas (id) on delete set null
+);
+
+create index IF not exists idx_patos_status on public.patos_primordiais using btree (status_hibernacao);
+create index IF not exists idx_patos_localizacao on public.patos_primordiais using gin (localizacao);
+create index IF not exists idx_patos_capturado on public.patos_primordiais using btree (capturado);
+create index IF not exists idx_pato_marca_id on public.patos_primordiais using btree (drone_marca_id);
+
+create table public.missao_historico (
+  id uuid not null default gen_random_uuid (),
+  created_at timestamp with time zone null default now(),
+  pato_id uuid null,
+  base_id uuid null,
+  pato_pais text null,
+  pato_cidade text null,
+  base_nome text null,
+  status_missao text not null,
+  duracao_segundos integer null,
+  logs text[] null,
+  constraint missao_historico_pkey primary key (id),
+  constraint missao_historico_base_id_fkey foreign KEY (base_id) references bases_operacionais (id) on delete set null,
+  constraint missao_historico_pato_id_fkey foreign KEY (pato_id) references patos_primordiais (id) on delete set null
+);
