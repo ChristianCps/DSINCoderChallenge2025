@@ -171,6 +171,17 @@ Após criar uma conta:
 
 📌 Dentro do seu projeto no Supabase:
 
+**Criando as Tabelas no Supabase**  
+As tabelas necessárias para o funcionamento da aplicação não vêm prontas. Siga os passos abaixo:
+
+1. Vá para **SQL Editor** no projeto que você criou.
+2. Abra o arquivo [supabase_schema_setup.txt](./supabase_schema_setup.txt) localizado acima (que está na raiz do projeto).
+3. Copie todo o conteúdo do arquivo.
+4. Cole o conteúdo no **SQL Editor** do Supabase.
+5. Clique em **Run ▶** para executar.
+
+Pronto! Todas as tabelas, índices e relacionamentos serão criados automaticamente e sua aplicação poderá se conectar ao banco de dados.
+
 **Para obter `VITE_SUPABASE_URL`:**
 - Vá em **Project Settings**
 - Vá em **Data API**
